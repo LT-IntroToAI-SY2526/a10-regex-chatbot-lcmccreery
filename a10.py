@@ -33,7 +33,6 @@ def get_page_html(title: str) -> str:
 def get_first_infobox_text(html: str) -> str:
     soup = BeautifulSoup(html, "html.parser")
     results = soup.find_all(class_="infobox")
-
     if not results:
         raise LookupError("Page has no infobox")
     return results[0].text
@@ -85,16 +84,33 @@ def get_population(place: str) -> str:
 
 def get_capital(country: str) -> str:
     infobox_text = clean_text(get_first_infobox_text(get_page_html(country)))
-    pattern = r"Capital[^\n]*\n(?P<cap>[^\n]+)"
+
+    # FIXED: capture the first real capital name
+    # This handles:
+    # - Capital
+    # - Capital city
+    # - De facto capital
+    # - Seat of government
+    # And skips lines like "None (de jure)"
+    pattern = r"(Capital|Capital city|De facto capital|Seat of government)[^\n]*\n(?:None.*\n)?(?P<cap>[A-Za-z .()'-]+)"
+
     match = get_match(infobox_text, pattern, "Page infobox has no capital info")
     return match.group("cap").strip()
 
 
 def get_height(person: str) -> str:
     infobox_text = clean_text(get_first_infobox_text(get_page_html(person)))
-    pattern = r"Height[^\d]*(?P<height>[\d.]+ ?m)"
-    match = get_match(infobox_text, pattern, "Page infobox has no height info")
-    return match.group("height")
+
+    # Try meters first
+    pattern_m = r"Height[^\d]*(?P<height>[\d.]+ ?m)"
+    try:
+        return get_match(infobox_text, pattern_m, "").group("height")
+    except:
+        pass
+
+    # Try feet/inches
+    pattern_ft = r"Height[^\d]*(?P<height>[\d]+ ft [\d]+ in)"
+    return get_match(infobox_text, pattern_ft, "Page infobox has no height info").group("height")
 
 
 # -----------------------------
@@ -106,7 +122,7 @@ def birth_date(matches: List[str]) -> List[str]:
 
 
 def polar_radius(matches: List[str]) -> List[str]:
-    return [get_polar_radius(matches[0])]
+    return [get_polar_radius(" ".join(matches))]
 
 
 def population(matches: List[str]) -> List[str]:
@@ -143,7 +159,9 @@ pa_list: List[Tuple[Pattern, Action]] = [
 
     ("what is the capital of %".split(), capital_city),
 
+    ("how tall is % %".split(), height),
     ("how tall is %".split(), height),
+    ("what is the height of % %".split(), height),
     ("what is the height of %".split(), height),
 
     (["bye"], bye_action),
@@ -178,4 +196,3 @@ def query_loop() -> None:
 
 
 query_loop()
-
